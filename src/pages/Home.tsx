@@ -159,7 +159,7 @@ export default function Home() {
 }
 function HeroVideo({ src, title }: { src: string; title: string }) {
   const [muted, setMuted] = useState(true);
-  const videoRef = useState<HTMLVideoElement | null>(null)[0];
+  
 
   return (
     <div className="h-full w-full relative group">
