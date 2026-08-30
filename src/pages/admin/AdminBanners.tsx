@@ -6,7 +6,7 @@ import { BANNER_IMAGE_BUCKET } from '../../lib/supabase';
 import type { Banner } from '../../types';
 import { LoadingState, EmptyState } from '../../components/LoadingState';
 
-const EMPTY = { title: '', link_url: '', position: 'hero' as Banner['position'], sort_order: 0 };
+const EMPTY = { title: '', link_url: '', position: 'hero' as Banner['position'], sort_order: 0, media_type: 'image' as Banner['media_type'] };
 
 export default function AdminBanners() {
   const [banners, setBanners] = useState<Banner[]>([]);
@@ -28,19 +28,19 @@ export default function AdminBanners() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!file) {
-      alert('Vui lòng chọn hình ảnh banner.');
+      alert('Vui lòng chọn tệp banner (ảnh hoặc video).');
       return;
     }
     setUploading(true);
     try {
-      const imageUrl = await uploadImage(BANNER_IMAGE_BUCKET, file);
-      await adminCreateBanner({ ...form, image_url: imageUrl, status: 'active' });
+      const mediaUrl = await uploadImage(BANNER_IMAGE_BUCKET, file);
+      await adminCreateBanner({ ...form, image_url: mediaUrl, status: 'active' });
       setShowForm(false);
       setForm(EMPTY);
       setFile(null);
       load();
     } catch (err: any) {
-      alert(err.message ?? 'Lỗi khi tải ảnh lên. Hãy chắc chắn bucket "banner-images" đã được tạo trong Supabase Storage.');
+      alert(err.message ?? 'Lỗi khi tải lên. Hãy chắc chắn bucket "banner-images" đã được tạo trong Supabase Storage.');
     } finally {
       setUploading(false);
     }
@@ -76,7 +76,38 @@ export default function AdminBanners() {
           </select>
           <input placeholder="Link liên kết (tùy chọn)" className="input-field" value={form.link_url} onChange={(e) => setForm({ ...form, link_url: e.target.value })} />
           <input type="number" placeholder="Thứ tự hiển thị" className="input-field" value={form.sort_order} onChange={(e) => setForm({ ...form, sort_order: Number(e.target.value) })} />
-          <input required type="file" accept="image/*" className="input-field sm:col-span-2" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+
+          {/* CHỌN LOẠI BANNER: ẢNH hoặc VIDEO */}
+          <div className="sm:col-span-2 flex gap-4 items-center">
+            <span className="text-sm text-ink-900/60">Loại banner:</span>
+            <label className="flex items-center gap-1.5 text-sm">
+              <input
+                type="radio"
+                name="media_type"
+                checked={form.media_type === 'image'}
+                onChange={() => { setForm({ ...form, media_type: 'image' }); setFile(null); }}
+              />
+              Ảnh
+            </label>
+            <label className="flex items-center gap-1.5 text-sm">
+              <input
+                type="radio"
+                name="media_type"
+                checked={form.media_type === 'video'}
+                onChange={() => { setForm({ ...form, media_type: 'video' }); setFile(null); }}
+              />
+              Video
+            </label>
+          </div>
+
+          <input
+            required
+            type="file"
+            accept={form.media_type === 'video' ? 'video/*' : 'image/*'}
+            className="input-field sm:col-span-2"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          />
+
           <div className="sm:col-span-2 flex gap-2">
             <button type="submit" disabled={uploading} className="btn-primary">{uploading ? 'Đang tải lên...' : 'Lưu'}</button>
             <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">Hủy</button>
@@ -93,11 +124,15 @@ export default function AdminBanners() {
           {banners.map((b) => (
             <div key={b.id} className="card overflow-hidden">
               <div className="aspect-video bg-brand-50">
-                <img src={b.image_url} alt={b.title} className="h-full w-full object-cover" />
+                {b.media_type === 'video' ? (
+                  <video src={b.image_url} className="h-full w-full object-cover" muted loop autoPlay playsInline />
+                ) : (
+                  <img src={b.image_url} alt={b.title} className="h-full w-full object-cover" />
+                )}
               </div>
               <div className="p-3">
                 <p className="font-medium text-sm">{b.title}</p>
-                <p className="text-xs text-ink-900/50 mb-2">{b.position} · thứ tự {b.sort_order}</p>
+                <p className="text-xs text-ink-900/50 mb-2">{b.media_type === 'video' ? '🎬 Video' : '🖼️ Ảnh'} · {b.position} · thứ tự {b.sort_order}</p>
                 <div className="flex items-center justify-between">
                   <button onClick={() => handleToggle(b)} className={`text-xs rounded-full px-2 py-1 ${b.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-ink-900/10 text-ink-900/50'}`}>
                     {b.status === 'active' ? 'Đang hiển thị' : 'Đã tắt'}

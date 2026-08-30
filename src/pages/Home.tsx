@@ -59,9 +59,13 @@ export default function Home() {
               <Link to="/san-pham?featured=1" className="btn-secondary">Sản phẩm nổi bật</Link>
             </div>
           </div>
-          <div className="aspect-square rounded-3xl bg-white/60 overflow-hidden">
+                    <div className="aspect-square rounded-3xl bg-white/60 overflow-hidden relative">
             {hero?.image_url ? (
-              <img src={hero.image_url} alt={hero.title} className="h-full w-full object-cover" />
+              hero.media_type === 'video' ? (
+                <HeroVideo src={hero.image_url} title={hero.title} />
+              ) : (
+                <img src={hero.image_url} alt={hero.title} className="h-full w-full object-cover" />
+              )
             ) : (
               <div className="h-full w-full flex items-center justify-center text-brand-400">
                 🕯️ Banner sẽ hiển thị tại đây (Admin thêm trong mục Banner)
@@ -150,6 +154,36 @@ export default function Home() {
           làm thủ công từ sáp thiên nhiên và tinh dầu nguyên chất, mang đến trải nghiệm thư giãn trọn vẹn cho bạn và những người thân yêu.
         </p>
       </section>
+    </div>
+  );
+}
+function HeroVideo({ src, title }: { src: string; title: string }) {
+  const [muted, setMuted] = useState(true);
+  const videoRef = useState<HTMLVideoElement | null>(null)[0];
+
+  return (
+    <div className="h-full w-full relative group">
+      <video
+        src={src}
+        title={title}
+        className="h-full w-full object-cover"
+        autoPlay
+        loop
+        muted={muted}
+        playsInline
+        ref={(el) => { if (el) el.muted = muted; }}
+      />
+      <button
+        type="button"
+        onClick={(e) => {
+          const vid = (e.currentTarget.parentElement as HTMLElement).querySelector('video');
+          if (vid) { vid.muted = !vid.muted; setMuted(vid.muted); }
+        }}
+        className="absolute bottom-3 right-3 bg-black/50 hover:bg-black/70 text-white rounded-full p-2.5 transition"
+        aria-label={muted ? 'Bật tiếng' : 'Tắt tiếng'}
+      >
+        {muted ? '🔇' : '🔊'}
+      </button>
     </div>
   );
 }

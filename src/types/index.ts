@@ -169,6 +169,7 @@ export interface Banner {
   id: string;
   title: string;
   image_url: string;
+  media_type: 'image' | 'video'; 
   link_url: string | null;
   position: 'hero' | 'promo' | 'collection';
   sort_order: number;
