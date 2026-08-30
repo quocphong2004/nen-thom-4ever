@@ -2,7 +2,10 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { StarIcon } from '@heroicons/react/20/solid';
 import { fetchProductBySlug, fetchRelatedProducts } from '../services/productService';
-import { fetchProductReviews } from '../services/reviewService';
+import { fetchProductReviews, createReview } from '../services/reviewService';
+import { uploadImage } from '../services/storageService';
+import { PRODUCT_IMAGE_BUCKET } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
 import type { Product, ProductVariant, Review } from '../types';
 import { useCart } from '../context/CartContext';
 import { formatCurrency, formatDate } from '../utils/format';
@@ -31,28 +34,43 @@ export default function ProductDetail() {
   const [tab, setTab] = useState<(typeof TABS)[number]['key']>('overview');
   const [added, setAdded] = useState(false);
   const { addItem } = useCart();
+  const { user, profile } = useAuth();
+
+  // Form viết đánh giá
+  const [myRating, setMyRating] = useState(5);
+  const [myContent, setMyContent] = useState('');
+  const [myImageFile, setMyImageFile] = useState<File | null>(null);
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewError, setReviewError] = useState('');
+  const [reviewSuccess, setReviewSuccess] = useState(false);
+
+  async function loadProductAndReviews(currentSlug: string) {
+    const p = await fetchProductBySlug(currentSlug);
+    if (!p) {
+      setNotFound(true);
+      setLoading(false);
+      return;
+    }
+    setProduct(p);
+    setSelectedVariant((prev) => p.variants?.find((v) => v.id === prev?.id) ?? p.variants?.[0] ?? null);
+    const [rel, rev] = await Promise.all([
+      fetchRelatedProducts(p.category_id, p.id),
+      fetchProductReviews(p.id),
+    ]);
+    setRelated(rel);
+    setReviews(rev);
+    setLoading(false);
+  }
 
   useEffect(() => {
     if (!slug) return;
     setLoading(true);
+    setNotFound(false);
     setAdded(false);
-    fetchProductBySlug(slug).then(async (p) => {
-      if (!p) {
-        setNotFound(true);
-        setLoading(false);
-        return;
-      }
-      setProduct(p);
-      setSelectedVariant(p.variants?.[0] ?? null);
-      setActiveImage(0);
-      const [rel, rev] = await Promise.all([
-        fetchRelatedProducts(p.category_id, p.id),
-        fetchProductReviews(p.id),
-      ]);
-      setRelated(rel);
-      setReviews(rev);
-      setLoading(false);
-    });
+    setActiveImage(0);
+    setReviewSuccess(false);
+    loadProductAndReviews(slug);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
 
   if (loading) return <LoadingState label="Đang tải sản phẩm..." />;
@@ -79,6 +97,36 @@ export default function ProductDetail() {
     addItem(product, selectedVariant, quantity);
     setAdded(true);
     setTimeout(() => setAdded(false), 2000);
+  }
+
+  async function handleSubmitReview(e: React.FormEvent) {
+    e.preventDefault();
+    if (!user || !product) return;
+    setReviewError('');
+    setSubmittingReview(true);
+    try {
+      let imageUrl: string | null = null;
+      if (myImageFile) {
+        imageUrl = await uploadImage(PRODUCT_IMAGE_BUCKET, myImageFile);
+      }
+      await createReview({
+        userId: user.id,
+        productId: product.id,
+        orderId: null,
+        rating: myRating,
+        content: myContent,
+        imageUrl,
+      });
+      setMyContent('');
+      setMyImageFile(null);
+      setMyRating(5);
+      setReviewSuccess(true);
+      await loadProductAndReviews(product.slug);
+    } catch (err: any) {
+      setReviewError(err.message ?? 'Có lỗi xảy ra, vui lòng thử lại.');
+    } finally {
+      setSubmittingReview(false);
+    }
   }
 
   return (
@@ -199,7 +247,50 @@ export default function ProductDetail() {
           {tab === 'storage' && (product.storage_instructions || 'Chưa có hướng dẫn bảo quản.')}
           {tab === 'safety' && (product.safety_notes || 'Chưa có lưu ý an toàn.')}
           {tab === 'reviews' && (
-            <div className="space-y-4">
+            <div className="space-y-6">
+              {/* Form viết đánh giá */}
+              <div className="card p-4 not-prose">
+                <h3 className="font-medium text-ink-900 mb-3">Viết đánh giá của bạn</h3>
+                {!user ? (
+                  <p className="text-sm">
+                    <Link to="/dang-nhap" className="text-brand-600 font-medium hover:underline">Đăng nhập</Link> để viết đánh giá cho sản phẩm này.
+                  </p>
+                ) : reviewSuccess ? (
+                  <p className="text-sm text-green-600">Cảm ơn bạn đã đánh giá! Đánh giá của bạn đã được đăng.</p>
+                ) : (
+                  <form onSubmit={handleSubmitReview} className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-ink-900/60">Chấm điểm:</span>
+                      <div className="flex">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <button type="button" key={i} onClick={() => setMyRating(i + 1)}>
+                            <StarIcon className={`h-6 w-6 ${i < myRating ? 'text-amber-400' : 'text-ink-900/15'}`} />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <textarea
+                      required
+                      placeholder={`Cảm nhận của bạn về ${profile?.full_name ?? 'sản phẩm'}...`}
+                      className="input-field"
+                      rows={3}
+                      value={myContent}
+                      onChange={(e) => setMyContent(e.target.value)}
+                    />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="input-field text-xs"
+                      onChange={(e) => setMyImageFile(e.target.files?.[0] ?? null)}
+                    />
+                    {reviewError && <p className="text-sm text-red-500">{reviewError}</p>}
+                    <button type="submit" disabled={submittingReview} className="btn-primary !py-2 !px-5 text-sm">
+                      {submittingReview ? 'Đang gửi...' : 'Gửi đánh giá'}
+                    </button>
+                  </form>
+                )}
+              </div>
+
               {reviews.length === 0 ? (
                 <p>Chưa có đánh giá nào cho sản phẩm này.</p>
               ) : (
